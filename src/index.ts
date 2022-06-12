@@ -1,13 +1,32 @@
 import { SlashCommandBuilder } from "@discordjs/builders"
 import { REST } from "@discordjs/rest"
 import { APIMessage, Routes } from "discord-api-types/v10"
-import { Application, CacheType, Client, CommandInteraction, Interaction, Message, MessageEmbed, MessageReaction, TextChannel, User } from "discord.js"
+import { Application, CacheType, Client, CommandInteraction, Permissions, Intents, Interaction, Message, MessageEmbed, MessageReaction, TextChannel, User, PartialMessageReaction, PartialUser, Typing } from "discord.js"
 import { clientId, guildId, token } from "../config.json"
 
 
-const client = new Client({ intents: 8 })
+const intents = new Intents()
+intents
+    .add(Intents.FLAGS.GUILD_MESSAGES)
+    // .add(Intents.FLAGS.GUILD_MESSAGE_TYPING)
+    .add(Intents.FLAGS.GUILD_MESSAGE_REACTIONS)
+    .add(Intents.FLAGS.DIRECT_MESSAGES)
+    // .add(Intents.FLAGS.DIRECT_MESSAGE_TYPING)
+    .add(Intents.FLAGS.DIRECT_MESSAGE_REACTIONS)
+
+const client = new Client({ intents: intents })
 const rest = new REST({ version: "10" }).setToken(token)
 
+
+const generateLink = () => {
+    const link = client.generateInvite({
+        permissions: [
+            Permissions.FLAGS.ADMINISTRATOR
+        ],
+        scopes: ["bot", "applications.commands"],
+    })
+    console.log(`Generated bot invite link: ${link}`)
+}
 
 const cleanCommands = async () => {
     const r = await rest.get(Routes.applicationGuildCommands(clientId, guildId)) as Application[]
@@ -35,15 +54,19 @@ const command = async (interaction: Interaction<CacheType>) => {
 
         const repliedObj = await channel.messages.fetch(replied.id)
 
-        console.log(repliedObj.author.username)
+        console.log(`Responded to ${repliedObj.author.username} with ${repliedObj.id}`)
         const collector = repliedObj.createReactionCollector()
         collector.on("collect", r => console.log(`Collected ${r.emoji.name}`))
         collector.on("end", collected => console.log(`Collected ${collected.size} items`))
     }
 }
 
-const run = async () => {
+const reactionAdd = async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
+    console.log(`User ${user.username} reacted with ${reaction.emoji.identifier}`)
+}
 
+const run = async () => {
+    generateLink()
 
     const cmd = new SlashCommandBuilder()
         .setName("m")
@@ -51,10 +74,12 @@ const run = async () => {
     await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [cmd] })
 
     client.on("interactionCreate", command)
-    client.on("messageReactionAdd", console.log)
+    client.on("messageReactionAdd", reactionAdd)
+    // client.on("debug", message => console.log(message))
+    // client.on("error", error => console.log(`${error.message} : ${error.stack}`))
+    // client.on("typingStart", typing => console.log(`${typing.toJSON()}`))
 
 }
-
 
 client.login(token).then(run).catch(({ message, stack }) => {
     console.log(`${message} : ${stack}`)
