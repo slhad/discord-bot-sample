@@ -17,6 +17,15 @@ intents
 const client = new Client({ intents: intents })
 const rest = new REST({ version: "10" }).setToken(token)
 
+const emojiTable = [
+    { emoji: "🤬", value: "Gambit" },
+    { emoji: "😱", value: "Gambit Prime" }
+]
+
+const translateEmojiToText = (emoji: string) => {
+    return emojiTable.find((emojiItem) => emojiItem.emoji === emoji)?.value
+}
+
 
 const generateLink = () => {
     const link = client.generateInvite({
@@ -26,18 +35,6 @@ const generateLink = () => {
         scopes: ["bot", "applications.commands"],
     })
     console.log(`Generated bot invite link: ${link}`)
-}
-
-const cleanCommands = async () => {
-    const r = await rest.get(Routes.applicationGuildCommands(clientId, guildId)) as Application[]
-    for (const app of r) {
-        await rest.delete(Routes.applicationGuildCommand(clientId, guildId, app.id))
-    }
-
-}
-
-const filterReactions = (mr: MessageReaction, user: User): boolean | Promise<boolean> => {
-    return [":cross:"].indexOf(mr.emoji.identifier) >= 0
 }
 
 // Reply with a proposition
@@ -61,8 +58,39 @@ const command = async (interaction: Interaction<CacheType>) => {
     }
 }
 
-const reactionAdd = async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
-    console.log(`User ${user.username} reacted with ${reaction.emoji.identifier}`)
+
+
+
+
+const reactionManage = async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
+    console.log(`User ${user.username} reacted with ${reaction.emoji.name}`)
+    const embed = reaction.message.embeds[0]
+
+    // if (embed.author?.name !== "Sondage") {
+    //     return
+    // }
+
+    const descriptionOrignal = embed.description?.split("\n")[0]
+    const descriptionReactions = []
+    for (const reactionMessage of reaction.message.reactions.cache) {
+        const emoji = reactionMessage[1].emoji.name || "No emoji"
+        const text = translateEmojiToText(emoji) || emoji
+
+        const users = await reactionMessage[1].users.fetch()
+        const userNames = []
+        for (const user of users) {
+            if (user[1].username !== "Keybot") {
+                userNames.push(user[1].username)
+            }
+        }
+        descriptionReactions.push(`\n - ${text} : ${userNames.join(", ")}`)
+    }
+
+
+    const newDescription = `${descriptionOrignal}${descriptionReactions}`
+    embed.description = newDescription
+    const message = await reaction.message.fetch()
+    await message.edit({ embeds: [embed] })
 }
 
 const run = async () => {
@@ -74,13 +102,14 @@ const run = async () => {
     await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [cmd] })
 
     client.on("interactionCreate", command)
-    client.on("messageReactionAdd", reactionAdd)
+    client.on("messageReactionAdd", reactionManage)
+    client.on("messageReactionRemove", reactionManage)
     // client.on("debug", message => console.log(message))
-    // client.on("error", error => console.log(`${error.message} : ${error.stack}`))
-    // client.on("typingStart", typing => console.log(`${typing.toJSON()}`))
+    // client.on("error", error => console.log(`${ error.message } : ${ error.stack } `))
+    // client.on("typingStart", typing => console.log(`${ typing.toJSON() } `))
 
 }
 
 client.login(token).then(run).catch(({ message, stack }) => {
-    console.log(`${message} : ${stack}`)
+    console.log(`${message} : ${stack} `)
 })
