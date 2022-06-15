@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "@discordjs/builders"
 import { REST } from "@discordjs/rest"
-import { APIMessage, Routes } from "discord-api-types/v10"
-import { Application, CacheType, Client, CommandInteraction, Permissions, Intents, Interaction, Message, MessageEmbed, MessageReaction, TextChannel, User, PartialMessageReaction, PartialUser, Typing } from "discord.js"
+import { Routes } from "discord-api-types/v10"
+import { CacheType, Client, CommandInteraction, Intents, Interaction, MessageEmbed, MessageReaction, PartialMessageReaction, PartialUser, Permissions, TextChannel, User } from "discord.js"
 import { clientId, guildId, token } from "../config.json"
 
 
@@ -23,9 +23,12 @@ const emojiTable = [
 ]
 
 const translateEmojiToText = (emoji: string) => {
-    return emojiTable.find((emojiItem) => emojiItem.emoji === emoji)?.value
+    return emojiTable.find((emojiItem) => emojiItem.emoji === emoji)?.value || emoji
 }
 
+const ignoreUsers = () => {
+    return (process.env["USERS_IGNORE"] || "").split(",")
+}
 
 const generateLink = () => {
     const link = client.generateInvite({
@@ -41,7 +44,6 @@ const generateLink = () => {
 const command = async (interaction: Interaction<CacheType>) => {
     if (interaction instanceof CommandInteraction) {
 
-
         const embed = new MessageEmbed()
             .setTitle("What do you want ?")
             .setDescription("Eat, Yell, Drink ?")
@@ -52,17 +54,23 @@ const command = async (interaction: Interaction<CacheType>) => {
         const repliedObj = await channel.messages.fetch(replied.id)
 
         console.log(`Responded to ${repliedObj.author.username} with ${repliedObj.id}`)
-        const collector = repliedObj.createReactionCollector()
-        collector.on("collect", r => console.log(`Collected ${r.emoji.name}`))
-        collector.on("end", collected => console.log(`Collected ${collected.size} items`))
     }
 }
 
 
+const timersMemory: { [key: string]: number } = {}
+const timeIn = (timerId: string) => {
+    timersMemory[timerId] = Date.now()
+}
 
+const timeOut = (timerId: string, prefix?: string) => {
+    const timeElapsed = Date.now() - timersMemory[timerId]
+    console.log(`${prefix ? prefix + " " : ""}Time elapsed ${timeElapsed} ms`)
+}
 
 
 const reactionManage = async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
+    timeIn("reactionMessage")
     console.log(`User ${user.username} reacted with ${reaction.emoji.name}`)
     const embed = reaction.message.embeds[0]
 
@@ -72,25 +80,24 @@ const reactionManage = async (reaction: MessageReaction | PartialMessageReaction
 
     const descriptionOrignal = embed.description?.split("\n")[0]
     const descriptionReactions = []
-    for (const reactionMessage of reaction.message.reactions.cache) {
-        const emoji = reactionMessage[1].emoji.name || "No emoji"
-        const text = translateEmojiToText(emoji) || emoji
 
-        const users = await reactionMessage[1].users.fetch()
-        const userNames = []
-        for (const user of users) {
-            if (user[1].username !== "Keybot") {
-                userNames.push(user[1].username)
+    const userNamesS = await Promise.all(reaction.message.reactions.cache
+        .map((mr) => mr.users.fetch().then((users) => {
+            return {
+                emoji: translateEmojiToText(mr.emoji.name || "No emoji"),
+                users: users.filter((u) => ignoreUsers().indexOf(u.username) < 0).map(u => u.username)
             }
-        }
-        descriptionReactions.push(`\n - ${text} : ${userNames.join(", ")}`)
+        })))
+
+    for (const foundEmojiAndUsers of userNamesS.filter((fa) => fa.users.length > 0)) {
+        descriptionReactions.push(`\n - ${(await foundEmojiAndUsers).emoji} : ${(await foundEmojiAndUsers).users.join(", ")}`)
     }
 
-
-    const newDescription = `${descriptionOrignal}${descriptionReactions}`
+    const newDescription = `${descriptionOrignal}${descriptionReactions.join("\n")}`
     embed.description = newDescription
     const message = await reaction.message.fetch()
     await message.edit({ embeds: [embed] })
+    timeOut("reactionMessage", "User reaction in description")
 }
 
 const run = async () => {
