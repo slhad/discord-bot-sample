@@ -93,10 +93,13 @@ const reactionManage = async (reaction: MessageReaction | PartialMessageReaction
         descriptionReactions.push(`\n - ${(await foundEmojiAndUsers).emoji} : ${(await foundEmojiAndUsers).users.join(", ")}`)
     }
 
-    const newDescription = `${descriptionOrignal}${descriptionReactions.join("\n")}`
-    embed.description = newDescription
-    const message = await reaction.message.fetch()
-    await message.edit({ embeds: [embed] })
+    if (userNamesS.some((emoji) => emoji.users.length > 0)) {
+        const newDescription = `${descriptionOrignal}${descriptionReactions.join("\n")}`
+        embed.description = newDescription
+        const message = await reaction.message.fetch()
+        await message.edit({ embeds: [embed] })
+    }
+
     timeOut("reactionMessage", "User reaction in description")
 }
 
